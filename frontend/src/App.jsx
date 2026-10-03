@@ -58,6 +58,18 @@ export default function App() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [personResultUrl, setPersonResultUrl] = useState('');
+
+  useEffect(() => () => {
+    if (result?.imageUrl?.startsWith('blob:')) URL.revokeObjectURL(result.imageUrl);
+  }, [result]);
+
+  useEffect(() => {
+    if (!person) { setPersonResultUrl(''); return undefined; }
+    const imageUrl = URL.createObjectURL(person);
+    setPersonResultUrl(imageUrl);
+    return () => URL.revokeObjectURL(imageUrl);
+  }, [person]);
 
   const selectImage = (setter) => (file) => {
     setError('');
@@ -95,10 +107,15 @@ export default function App() {
       body.append('garment', garment);
       body.append('category', category);
       const response = await fetch(`${API_URL}/api/try-on`, { method: 'POST', body });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? 'The try-on request could not be completed.');
-      if (!payload.imageUrl) throw new Error('The server did not return a generated image.');
-      setResult({ imageUrl: payload.imageUrl, isMock: Boolean(payload.isMock) });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? 'The try-on request could not be completed.');
+      }
+      if (!response.headers.get('content-type')?.startsWith('image/')) {
+        throw new Error('The server did not return a generated image.');
+      }
+      const imageUrl = URL.createObjectURL(await response.blob());
+      setResult({ imageUrl });
     } catch (requestError) {
       setError(requestError.message === 'Failed to fetch'
         ? 'Cannot reach the local server. Start the backend on port 4000 and try again.'
@@ -143,8 +160,7 @@ export default function App() {
 
         {result && <section className="result-section">
           <div className="result-header"><div><p className="eyebrow">YOUR VIRTUAL FIT</p><h2>Try-on result</h2></div><button type="button" className="text-button" onClick={reset}>Start over</button></div>
-          {result.isMock && <div className="message mock">Mock result for interface development. This is not AI-generated.</div>}
-          <div className="result-grid"><img src={URL.createObjectURL(person)} alt="Original person" /><img src={result.imageUrl} alt="Generated virtual try-on" /></div>
+          <div className="result-grid"><img src={personResultUrl} alt="Original person" /><img src={result.imageUrl} alt="Generated virtual try-on" /></div>
           <a className="download" href={result.imageUrl} download="virtualfit-result.png">Download image ↓</a>
         </section>}
       </div>
